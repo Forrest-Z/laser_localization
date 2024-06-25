@@ -5,12 +5,12 @@
 
 namespace global_localization {
 
-    GlobalLocalizationBBS::GlobalLocalizationBBS(rclcpp::Node *node): node_(node) {
+    GlobalLocalizationBBS::GlobalLocalizationBBS(ros::NodeHandle& nh): nh_(nh) {
         float ndt_resolution, ndt_step_size, ndt_epsilon, ndt_max_iterations;
-        node_->get_parameter("ndt/resolution", ndt_resolution);
-        node_->get_parameter("ndt/step_size", ndt_step_size);
-        node_->get_parameter("ndt/epsilon", ndt_epsilon);
-        node_->get_parameter("ndt/max_iterations", ndt_max_iterations);
+        nh_.getParam("ndt/resolution", ndt_resolution);
+        nh_.getParam("ndt/step_size", ndt_step_size);
+        nh_.getParam("ndt/epsilon", ndt_epsilon);
+        nh_.getParam("ndt/max_iterations", ndt_max_iterations);
         ndt.setResolution(ndt_resolution);
         ndt.setStepSize(ndt_step_size);
         ndt.setTransformationEpsilon(ndt_epsilon);
@@ -33,7 +33,7 @@ namespace global_localization {
             T.block<3, 3>(0,0).determinant() == NAN ||
             T.block<3, 3>(0,0).determinant() > 1.2 ||
             T(0, 3) == NAN || T(1, 3) == NAN || T(2, 3) == NAN ){
-        // T is not available
+            // T is not available
             return globalLocalization(cloud, result);
         }
         else{
@@ -57,8 +57,13 @@ namespace global_localization {
         pcl::transformPointCloud(*map_, *new_map, center_t);
         // filter
         float map_resolution, scan_resolution;
-        node_->get_parameter("bbs/map_filter_resolution", map_resolution);
-        node_->get_parameter("bbs/scan_filter_resolution", scan_resolution);
+        nh_.getParam("bbs/map_filter_resolution", map_resolution);
+        nh_.getParam("bbs/scan_filter_resolution", scan_resolution);
+        //用ROS_INFO输出map_resolution和scan_resolution
+//        ROS_INFO("111 map_resolution: %f", map_resolution);
+//        ROS_INFO("111 scan_resolution: %f", scan_resolution);
+//        map_resolution=0.05;
+//        scan_resolution=0.05;
         new_map = downSample(new_map, map_resolution);
         auto filtered  = downSample(cloud, scan_resolution);
         // set match map
@@ -89,28 +94,28 @@ namespace global_localization {
         pcl::transformPointCloud(*map_, *new_map, center_t);
         // filter
         float map_resolution, scan_resolution;
-        node_->get_parameter("bbs/map_filter_resolution", map_resolution);
-        node_->get_parameter("bbs/scan_filter_resolution", scan_resolution);
+        nh_.getParam("bbs/map_filter_resolution", map_resolution);
+        nh_.getParam("bbs/scan_filter_resolution", scan_resolution);
         new_map = downSample(new_map, map_resolution);
         auto filtered  = downSample(cloud, scan_resolution);
         // set match map
         {
             BBSParams params;
             double width, height;
-            node_->get_parameter("global_map_width", width);
-            node_->get_parameter("global_map_height", height);
-            node_->get_parameter("bbs/max_range", params.max_range);
+            nh_.getParam("global_map_width", width);
+            nh_.getParam("global_map_height", height);
+            nh_.getParam("bbs/max_range", params.max_range);
             params.min_tx = -width/2;
             params.max_tx = width/2;
             params.min_ty = -height/2;
             params.max_ty = height/2;
-            node_->get_parameter("bbs/min_theta", params.min_theta);
-            node_->get_parameter("bbs/max_theta", params.max_theta);
+            nh_.getParam("bbs/min_theta", params.min_theta);
+            nh_.getParam("bbs/max_theta", params.max_theta);
             bbs.reset(new BBSLocalization(params));
 
-            double map_min_z = 2.0, map_max_z = 2.4;
-            node_->get_parameter("bbs/map_min_z", map_min_z);
-            node_->get_parameter("bbs/map_max_z", map_max_z);
+            double map_min_z = -5.0, map_max_z = 15.0;
+            nh_.getParam("bbs/map_min_z", map_min_z);
+            nh_.getParam("bbs/map_max_z", map_max_z);
             auto map_2d = slice(*new_map, map_min_z, map_max_z);
 
             if (map_2d.size() < 128) {
@@ -120,11 +125,11 @@ namespace global_localization {
 
             int map_width = 512, map_height = 1024, map_pyramid_level = 6, max_points_per_cell = 5;
             double map_resolution;
-            node_->get_parameter("bbs/map_width", map_width);
-            node_->get_parameter("bbs/map_height", map_height);
-            node_->get_parameter("bbs/map_resolution", map_resolution);
-            node_->get_parameter("bbs/map_pyramid_level", map_pyramid_level);
-            node_->get_parameter("bbs/max_points_per_cell", max_points_per_cell);
+            nh_.getParam("bbs/map_width", map_width);
+            nh_.getParam("bbs/map_height", map_height);
+            nh_.getParam("bbs/map_resolution", map_resolution);
+            nh_.getParam("bbs/map_pyramid_level", map_pyramid_level);
+            nh_.getParam("bbs/max_points_per_cell", max_points_per_cell);
 
             bbs->set_map(map_2d, map_resolution, map_width, map_height, map_pyramid_level, max_points_per_cell);
 
@@ -153,18 +158,18 @@ namespace global_localization {
     void GlobalLocalizationBBS::set_match_map(pcl::PointCloud<pcl::PointXYZI>::ConstPtr cloud) {
 
         BBSParams params;
-        node_->get_parameter("bbs/max_range", params.max_range);
-        node_->get_parameter("bbs/min_tx", params.min_tx);
-        node_->get_parameter("bbs/max_tx", params.max_tx);
-        node_->get_parameter("bbs/min_ty", params.min_ty);
-        node_->get_parameter("bbs/max_ty", params.max_ty);
-        node_->get_parameter("bbs/min_theta", params.min_theta);
-        node_->get_parameter("bbs/max_theta", params.max_theta);
+        nh_.getParam("bbs/max_range", params.max_range);
+        nh_.getParam("bbs/min_tx", params.min_tx);
+        nh_.getParam("bbs/max_tx", params.max_tx);
+        nh_.getParam("bbs/min_ty", params.min_ty);
+        nh_.getParam("bbs/max_ty", params.max_ty);
+        nh_.getParam("bbs/min_theta", params.min_theta);
+        nh_.getParam("bbs/max_theta", params.max_theta);
         bbs.reset(new BBSLocalization(params));
 
-        double map_min_z = 2.0, map_max_z = 2.4;
-        node_->get_parameter("bbs/map_min_z", map_min_z);
-        node_->get_parameter("bbs/map_max_z", map_max_z);
+        double map_min_z = -5.0, map_max_z = 15.0;
+        nh_.getParam("bbs/map_min_z", map_min_z);
+        nh_.getParam("bbs/map_max_z", map_max_z);
         auto map_2d = slice(*cloud, map_min_z, map_max_z);
 
         if (map_2d.size() < 128) {
@@ -174,11 +179,11 @@ namespace global_localization {
 
         int map_width = 512, map_height = 1024, map_pyramid_level = 6, max_points_per_cell = 5;
         double map_resolution;
-        node_->get_parameter("bbs/map_width", map_width);
-        node_->get_parameter("bbs/map_height", map_height);
-        node_->get_parameter("bbs/map_resolution", map_resolution);
-        node_->get_parameter("bbs/map_pyramid_level", map_pyramid_level);
-        node_->get_parameter("bbs/max_points_per_cell", max_points_per_cell);
+        nh_.getParam("bbs/map_width", map_width);
+        nh_.getParam("bbs/map_height", map_height);
+        nh_.getParam("bbs/map_resolution", map_resolution);
+        nh_.getParam("bbs/map_pyramid_level", map_pyramid_level);
+        nh_.getParam("bbs/max_points_per_cell", max_points_per_cell);
 
         bbs->set_map(map_2d, map_resolution, map_width, map_height, map_pyramid_level, max_points_per_cell);
 
@@ -187,9 +192,9 @@ namespace global_localization {
     }
 
     GlobalLocalizationResults GlobalLocalizationBBS::query(pcl::PointCloud<pcl::PointXYZI>::ConstPtr cloud) {
-        double scan_min_z = -0.2, scan_max_z = 0.2;
-        node_->get_parameter("bbs/scan_min_z", scan_min_z);
-        node_->get_parameter("bbs/scan_max_z", scan_max_z);
+        double scan_min_z = -1.5, scan_max_z = 1.5;
+        nh_.getParam("bbs/scan_min_z", scan_min_z);
+        nh_.getParam("bbs/scan_max_z", scan_max_z);
         auto scan_2d = slice(*cloud, scan_min_z, scan_max_z);
 
         std::vector<GlobalLocalizationResult::Ptr> results;

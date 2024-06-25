@@ -10,24 +10,27 @@
 #include <pcl/filters/voxel_grid.h>
 
 using namespace std::chrono_literals;
-class Publisher : public rclcpp::Node
+class Publisher
 {
 public:
-    Publisher()
-            : Node("test_laser")
+    Publisher(ros::NodeHandle& nh)
+            :nh_(nh)
     {
-        this->declare_parameter<double>("ndt/resolution", 1.0);
-        this->declare_parameter<double>("ndt/step_size", 0.1);
-        this->declare_parameter<double>("ndt/epsilon", 0.01);
-        this->declare_parameter<double>("ndt/max_iterations", 30.0);
-        this->declare_parameter<double>("ndt/frame_resolution", 2.0);
-        this->declare_parameter<double>("odom/kf_distance", 3.0);
-        this->declare_parameter<int>("odom/local_map_size", 10);
-        this->declare_parameter<double>("ndt/local_map_resolution", 2.0);
+        nh_.param<double>("ndt/resolution", ndt_resolution_, 1.0);
+        nh_.param<double>("ndt/step_size", ndt_step_size_, 0.1);
+        nh_.param<double>("ndt/epsilon", ndt_epsilon_, 0.01);
+        nh_.param<double>("ndt/max_iterations", ndt_max_iterations_, 30.0);
+        nh_.param<double>("ndt/frame_resolution", ndt_frame_resolution_, 2.0);
+        nh_.param<double>("odom/kf_distance", odom_kf_distance_, 3.0);
+        nh_.param<int>("odom/local_map_size", odom_local_map_size_, 10);
+        nh_.param<double>("ndt/local_map_resolution", ndt_local_map_resolution_, 2.0);
 
-        odometry = new laserOdometry(this);
-        timer_ = this->create_wall_timer(
-                500ms, std::bind(&Publisher::timer_callback, this));
+//        odometry = new laserOdometry(this);
+        odometry = new laserOdometry(nh_);
+
+//        timer_ = this->create_wall_timer(
+//                500ms, std::bind(&Publisher::timer_callback, this));
+        timer_ = nh.createTimer(ros::Duration(0.1), boost::bind(&Publisher::timer_callback, this));
     }
 
     pcl::PointCloud<pcl::PointXYZI>::Ptr getLocalMap(){return odometry->getLocalMap();}
@@ -70,7 +73,8 @@ private:
     void timer_callback()
     {
     }
-    rclcpp::TimerBase::SharedPtr timer_;
+//    rclcpp::TimerBase::SharedPtr timer_;
+    ros::Timer timer_;
     int getFileNum(const std::string &path)
     {   //需要用到<dirent.h>头文件
         int fileNum = 0;
@@ -86,6 +90,13 @@ private:
         closedir(pDir);
         return fileNum;
     }
+
+    ros::NodeHandle nh_;
+    int odom_local_map_size_;
+    double ndt_max_iterations_, ndt_resolution_, ndt_step_size_, ndt_epsilon_;
+    double ndt_frame_resolution_, odom_kf_distance_, ndt_local_map_resolution_;
+    double global_resolution_, global_frame_resolution_, global_view_resolution_;
+    double local_map_size_;
 
 };
 
@@ -106,38 +117,47 @@ boost::shared_ptr<pcl::visualization::PCLVisualizer> simpleVis (const pcl::Point
 
 int main(int argc, char * argv[])
 {
-    rclcpp::init(argc, argv);
-    auto node = std::make_shared<Publisher>();
+//    rclcpp::init(argc, argv);
+//    auto node = std::make_shared<Publisher>();
+    ros::init(argc, argv, "my_localization");
+    ros::NodeHandle nh;
+    Publisher node(nh);
 
-    std::string path = "/media/lyc/软件/1-10/05/velodyne/";
-    std::vector<std::string> file_name = node->getKittiData(path);
+    std::string path = "/media/hl/One_Touch/ubuntu_share/Dataset/kitti/data_odometry_velodyne/dataset/sequences/00/velodyne/";
+    std::vector<std::string> file_name = node.getKittiData(path);
     pcl::PointCloud<pcl::PointXYZI>::Ptr show(new pcl::PointCloud<pcl::PointXYZI>);
     Eigen::Matrix4f last_pose = Eigen::Matrix4f::Identity();
     auto viewer = simpleVis(show);
 
     for (auto & file : file_name)
     {
-        if (!rclcpp::ok())
+        if (!ros::ok())
             break;
-        auto points = node->readKittiBinData(file);
+        auto points = node.readKittiBinData(file);
         // process
-        Eigen::Matrix4f pose = node->odometry->addFrame(points);
+        Eigen::Matrix4f pose = node.odometry->addFrame(points);
+        //输出位姿
+        std::cout << "pose: " << pose << std::endl;
 
         // visualization
         viewer->addLine(pcl::PointXYZ(last_pose(0,3), last_pose(1,3), last_pose(2,3)), pcl::PointXYZ(pose(0,3), pose(1,3), pose(2,3)), file);
+        // 设置线条颜色 (RGB: 红色)
+        viewer->setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR, 0.0, 1.0, 0.0, file);
+        // 设置线条粗细
+        viewer->setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_LINE_WIDTH, 20.0, file);
+
         last_pose = pose;
         pcl::transformPointCloud(*points, *show, pose);
 
         pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> view_h(show, "intensity");
         viewer->updatePointCloud(show, view_h, "show");
 
-        pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> view_h2(node->getLocalMap(), "intensity");
-        viewer->updatePointCloud(node->getLocalMap(), view_h2, "map");
+        pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> view_h2(node.getLocalMap(), "intensity");
+        viewer->updatePointCloud(node.getLocalMap(), view_h2, "map");
         viewer->spinOnce();
 //        boost::this_thread::sleep (boost::posix_time::milliseconds (50));
-        rclcpp::spin_some(node);
+        ros::spinOnce();
     }
     viewer->spin();
-    rclcpp::shutdown();
     return 0;
 }

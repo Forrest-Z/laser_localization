@@ -3,7 +3,7 @@
 
 #include <vector>
 #include <Eigen/Core>
-#include <nav_msgs/msg/occupancy_grid.hpp>
+#include <nav_msgs/OccupancyGrid.h>
 #include <opencv2/opencv.hpp>
 
 namespace global_localization {
@@ -68,8 +68,10 @@ namespace global_localization {
             return std::make_shared<OccupancyGridMap>(resolution * 2.0, small_map);
         }
 
-        nav_msgs::msg::OccupancyGrid::ConstSharedPtr to_rosmsg() {
-            nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg(new nav_msgs::msg::OccupancyGrid);
+//        nav_msgs::msg::OccupancyGrid::ConstSharedPtr to_rosmsg() {
+//            nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg(new nav_msgs::msg::OccupancyGrid);
+        nav_msgs::OccupancyGrid::ConstPtr to_rosmsg() {
+            nav_msgs::OccupancyGrid::Ptr msg(new nav_msgs::OccupancyGrid);
             // TODO
         }
 

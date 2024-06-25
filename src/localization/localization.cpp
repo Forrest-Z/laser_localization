@@ -10,8 +10,10 @@
 
 namespace laser_localization
 {
-    localization::localization(rclcpp::Node *node):
-    estimate_(filter(node)), node_(node)
+//    localization::localization(rclcpp::Node *node):
+//    estimate_(filter(node)), node_(node)
+    localization::localization(ros::NodeHandle& nh):
+            estimate_(filter(nh)), nh_(nh)
     {
         Zero.rotation.w= 1;
         Zero.rotation.x= 0;
@@ -25,12 +27,15 @@ namespace laser_localization
         // init
         map_points_ = boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>();
         std::string global_map;
-        node_->get_parameter("global_map", global_map);
-        pcl::io::loadPCDFile<pcl::PointXYZI>(global_map, *map_points_);
+        nh_.getParam("global_map", global_map);
+        //输出global_map
+        std::cout << "-------global_map: " << global_map << std::endl;
+//        pcl::io::loadPCDFile<pcl::PointXYZI>(global_map, *map_points_);
+        pcl::io::loadPCDFile<pcl::PointXYZI>("/home/hl/project/humanoid_ctr/src/hdl_graph_slam-master/map.pcd", *map_points_);
 
         float global_resolution, global_view_resolution;
-        node_->get_parameter("global_resolution", global_resolution);
-        node_->get_parameter("global_view_resolution", global_view_resolution);
+        nh_.getParam("global_resolution", global_resolution);
+        nh_.getParam("global_view_resolution", global_view_resolution);
 
         map_points_ = downSample(map_points_, global_resolution);
         map_points_view_ = downSample(map_points_, global_view_resolution);
@@ -46,7 +51,7 @@ namespace laser_localization
     {
         static bool init = false;
         double distance;
-        node_->get_parameter("local_map_size", distance);
+        nh_.getParam("local_map_size", distance);
         Eigen::Vector2f delta = (pose.block<2, 1>(0, 3) - local_map_pose_.block<2, 1>(0, 3));
         if (delta.norm() < distance / 3 && init)
             return;
@@ -64,7 +69,7 @@ namespace laser_localization
     }
 
     // odom
-    void localization::update_pos(const geometry_msgs::msg::Twist::SharedPtr& cmd, float dt)
+    void localization::update_pos(const geometry_msgs::Twist::ConstPtr& cmd, float dt)
     {
         static float yaw = 0;
         pos_.translation.x = (pos_.translation.x + cmd->linear.x * cos(yaw) * dt - cmd->linear.y * sin(yaw) * dt);
@@ -87,9 +92,9 @@ namespace laser_localization
         std::cout<<"start correcting !!!"<<std::endl;
         //
         double resolution;
-        node_->get_parameter("global_frame_resolution", resolution);
+        nh_.getParam("global_frame_resolution", resolution);
         cloud = downSample(cloud, resolution);
-        if (cloud->points.size() < 400)
+        if (cloud->points.size() < 300)
             return true;
         // 1. predict laser pos
         Eigen::Matrix4f predict_pos = estimate_.get_pos();
@@ -167,9 +172,9 @@ namespace laser_localization
     pcl::Registration<pcl::PointXYZI, pcl::PointXYZI>::Ptr localization::create_registration()
     {
         float resolution, step_size, epsilon;
-        node_->get_parameter("localization/ndt_resolution", resolution);
-        node_->get_parameter("localization/ndt_step_size", step_size);
-        node_->get_parameter("localization/ndt_epsilon", epsilon);
+        nh_.getParam("localization/ndt_resolution", resolution);
+        nh_.getParam("localization/ndt_step_size", step_size);
+        nh_.getParam("localization/ndt_epsilon", epsilon);
 
         pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI>::Ptr ndt(new pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI>());
         ndt->setResolution(resolution);

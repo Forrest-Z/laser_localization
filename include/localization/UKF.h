@@ -2,13 +2,14 @@
 #define LOCALIZATION_UKF_H
 #include "eigen3/Eigen/Core"
 #include "eigen3/Eigen/Geometry"
-#include "rclcpp/rclcpp.hpp"
+#include <ros/ros.h>
 namespace laser_localization
 {
     class filter
     {
     public:
-        filter(rclcpp::Node *node);
+//        filter(rclcpp::Node *node);
+        filter(ros::NodeHandle &nh);
         Eigen::Vector3f predict(const Eigen::Matrix4f& update);
         Eigen::Vector3f update(const Eigen::Vector3f& p, const Eigen::Quaternionf& a);
         void set_pos(const Eigen::Vector3f& p, const Eigen::Quaternionf& a);
@@ -19,7 +20,9 @@ namespace laser_localization
 
         Eigen::Vector3f pos_;
         Eigen::Quaternionf angular_;
-        rclcpp::Node *node_;
+//        rclcpp::Node *node_;
+        ros::NodeHandle nh_;
+        float distance = 0;
     };
 
     class UKF
@@ -30,3 +33,4 @@ namespace laser_localization
     };
 }
 #endif //LOCALIZATION_UKF_H
+

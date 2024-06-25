@@ -4,12 +4,13 @@
 #include <pcl/registration/ndt.h>
 #include <pcl/filters/voxel_grid.h>
 #include <Eigen/Core>
-#include "rclcpp/rclcpp.hpp"
+#include <ros/ros.h>
 
 class laserOdometry
 {
 public:
-    laserOdometry(rclcpp::Node *node);
+//    laserOdometry(rclcpp::Node *node);
+    laserOdometry(ros::NodeHandle &nh);
     Eigen::Matrix4f addFrame(const pcl::PointCloud<pcl::PointXYZI>::Ptr& point);
     Eigen::Matrix4f addFrame(const pcl::PointCloud<pcl::PointXYZI>::Ptr& point, const Eigen::Matrix4f& predict, bool &accept);
     pcl::PointCloud<pcl::PointXYZI>::Ptr downSample(const pcl::PointCloud<pcl::PointXYZI>::Ptr& cloud, float resolution);
@@ -26,7 +27,8 @@ private:
 //    pcl::PointCloud<pcl::PointXYZI>::Ptr lastKf;
     pcl::PointCloud<pcl::PointXYZI>::Ptr align;
     pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI> ndt;
-    rclcpp::Node *node_;
+//    rclcpp::Node *node_;
+    ros::NodeHandle nh_;
 };
 
 #endif //LASER_ODOMETRY_LASER_ODOMETRY_H

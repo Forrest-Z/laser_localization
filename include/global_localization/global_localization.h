@@ -4,7 +4,7 @@
 #include "bbs_localization.h"
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
-#include "rclcpp/rclcpp.hpp"
+#include <ros/ros.h>
 #include <pcl/registration/ndt.h>
 
 struct GlobalLocalizationResult {
@@ -42,7 +42,8 @@ namespace global_localization {
 
     class GlobalLocalizationBBS {
     public:
-        GlobalLocalizationBBS(rclcpp::Node *node);
+//        GlobalLocalizationBBS(rclcpp::Node *node);
+        GlobalLocalizationBBS(ros::NodeHandle &nh);
         ~GlobalLocalizationBBS() ;
         // add api
 
@@ -66,7 +67,8 @@ namespace global_localization {
         pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI> ndt;
     protected:
         std::unique_ptr<BBSLocalization> bbs;
-        rclcpp::Node *node_;
+//        rclcpp::Node *node_;
+        ros::NodeHandle nh_;
 
     };
 }  // namespace global_localization
