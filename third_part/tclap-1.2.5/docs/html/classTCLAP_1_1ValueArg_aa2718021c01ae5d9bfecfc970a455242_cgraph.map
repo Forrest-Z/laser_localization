@@ -1,0 +1,4 @@
+<map id="TCLAP::ValueArg::operator const T &amp;" name="TCLAP::ValueArg::operator const T &amp;">
+<area shape="rect" id="node1" title="A ValueArg can be used as as its value type (T) This is the same as calling getValue()" alt="" coords="5,5,185,47"/>
+<area shape="rect" id="node2" href="$classTCLAP_1_1ValueArg.html#abcfd865f772d3fd26cdbe4d8112b3722" title="Returns the value of the argument." alt="" coords="233,13,416,39"/>
+</map>

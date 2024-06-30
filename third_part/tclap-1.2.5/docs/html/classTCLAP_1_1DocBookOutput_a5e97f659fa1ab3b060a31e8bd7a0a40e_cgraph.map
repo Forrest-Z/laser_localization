@@ -1,0 +1,4 @@
+<map id="TCLAP::DocBookOutput::failure" name="TCLAP::DocBookOutput::failure">
+<area shape="rect" id="node1" title="Prints (to stderr) an error message, short usage Can be overridden to produce alternative behavior." alt="" coords="5,5,172,47"/>
+<area shape="rect" id="node2" href="$classTCLAP_1_1ArgException.html#a9094aa058cf1dc246a9e657353433c3e" title="Returns the arg id and error text." alt="" coords="220,5,371,47"/>
+</map>
