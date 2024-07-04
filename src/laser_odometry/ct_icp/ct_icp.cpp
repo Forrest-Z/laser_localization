@@ -1,4 +1,4 @@
-#include "laser_odometry/ct_icp/ct_icp.h"
+#include "ct_icp.h"
 #include <omp.h>
 #include <chrono>
 #include <queue>

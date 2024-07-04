@@ -1,4 +1,4 @@
-#include "utilities/evaluate_slam.h"
+#include "evaluate_slam.h"
 
 double computeMeanRPE(const ArrayPoses &poses_gt, const ArrayPoses &poses_result, seq_errors &seq_err) {
     // static parameter

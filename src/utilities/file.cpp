@@ -1,4 +1,4 @@
-#include "utilities/file.h"
+#include "file.h"
 
 file::file(std::string path, openMode flag) : path_(path), mode_(flag)
 {

@@ -1,7 +1,7 @@
 #include <omp.h>
 #include <chrono>
-#include "laser_odometry/ct_odometry.h"
-#include "utilities/persoTimer.h"
+#include "ct_odometry.h"
+#include "persoTimer.h"
 #include <iostream>
 #include <fstream>
 

@@ -1,9 +1,9 @@
 #include <iomanip>
 #include <iostream>
 #include <fstream>
-#include "utilities/datasetReader.h"
-#include "utilities/plyFile.h"
-#include "utilities/io.h"
+#include "datasetReader.h"
+#include "plyFile.h"
+#include "io.h"
 
 
 const char *KITTI_SEQUENCE_NAMES[] = {

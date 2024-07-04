@@ -1,4 +1,4 @@
-#include "laser_odometry/ct_icp/cost_functions.h"
+#include "cost_functions.h"
 
 void TruncatedLoss::Evaluate(double s, double *rho) const {
     if (s < sigma2_) {

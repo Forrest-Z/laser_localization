@@ -1,4 +1,4 @@
-#include "utilities/plyFile.h"
+#include "plyFile.h"
 
 plyFile::plyFile(std::string path, openMode flag) :
 file(path, flag), header_(""), format_(binary_little_endian),
@@ -30,7 +30,7 @@ void plyFile::readHeader()
     {
         getline(file_, tmpStr);
         header_ += tmpStr + "\n";
-    } while (tmpStr.find("endheader_") != 0);
+    } while (tmpStr.find("end_header") != 0);
 
 
     // PARSE HEADER

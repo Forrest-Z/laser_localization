@@ -1,8 +1,6 @@
 #include <iostream>
 #include <string>
 
-#define _USE_MATH_DEFINES
-
 #include <math.h>
 #include <vector>
 #include <chrono>
@@ -15,7 +13,7 @@
 #include "laser_odometry/ct_odometry.h"
 #include "utilities/datasetReader.h"
 #include "utilities/io.h"
-#include "utilities/evaluate_slam.h"
+#include "evaluate_slam.h"
 
 #ifdef CT_ICP_WITH_VIZ
 
@@ -412,7 +410,7 @@ int main(int argc, char **argv) {
 
             registration_elapsed_ms += registration_elapsed.count() * 1000;
             all_seq_registration_elapsed_ms += registration_elapsed.count() * 1000;
-
+            std::cout<<"cost: "<<registration_elapsed.count() * 1000<<" ms pose: "<<summary.frame.begin_t<<std::endl;
 #ifdef CT_ICP_WITH_VIZ
             if (options.with_viz3d) {
                 auto &instance = viz::ExplorationEngine::Instance();

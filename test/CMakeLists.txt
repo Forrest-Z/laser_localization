@@ -1,0 +1,8 @@
+include_directories(../src)
+add_executable(test_ct_kitti test_ct_odom_kitti.cpp)
+target_link_libraries(test_ct_kitti PUBLIC CT_ICP TCLAP Ceres::ceres glog::glog Eigen3::Eigen OpenMP::OpenMP_CXX)
+install(TARGETS test_ct_kitti DESTINATION ${CT_ICP_RUNTIME_DESTINATION})
+if (WITH_VIZ3D)
+    target_link_libraries(test_ct_kitti PUBLIC viz3d)
+    target_compile_definitions(test_ct_kitti PUBLIC CT_ICP_WITH_VIZ=1)
+endif ()

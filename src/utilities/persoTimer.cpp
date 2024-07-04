@@ -1,4 +1,4 @@
-#include "utilities/persoTimer.h"
+#include "persoTimer.h"
 
 persoTimer::persoTimer() : t_(), dt_(0.0)
 {
