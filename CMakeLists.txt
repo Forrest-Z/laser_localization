@@ -8,6 +8,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 option(WITH_VIZ3D "Search and install viz3d (disabled by default)" OFF)
 option(WITH_PYTHON_BINDING "Install Python bindings" OFF)
+option(WITH_ROS "Build ROS1 Program  " ON)
+option(WITH_ROS2 "Build ROS2 Program  " OFF)
 
 if (NOT RUNTIME_DESTINATION)
     set(RUNTIME_DESTINATION ${CMAKE_CURRENT_SOURCE_DIR})
@@ -22,9 +24,36 @@ if(NOT TARGET OpenMP::OpenMP_CXX)
     message(INFO "Could not find OpenMP")
 endif()
 
+if (WITH_ROS)
+    find_package(catkin REQUIRED COMPONENTS
+            roscpp
+            visualization_msgs
+            tf2_ros
+            tf2
+            nav_msgs
+            sensor_msgs
+            std_srvs
+    )
+    include_directories(${catkin_INCLUDE_DIRS})
+endif ()
+
 add_subdirectory(src/utilities)
 add_subdirectory(src/laser_odometry)
+add_subdirectory(src/localization)
 add_subdirectory(test)
+
+if (WITH_ROS)
+    add_executable(laser_localization_ros src/main_ros.cpp)
+    target_link_libraries(laser_localization_ros PUBLIC LOCALIZATION CT_ICP TCLAP Ceres::ceres glog::glog Eigen3::Eigen OpenMP::OpenMP_CXX ${catkin_LIBRARIES})
+    install(TARGETS laser_localization_ros DESTINATION ${CT_ICP_RUNTIME_DESTINATION})
+endif ()
+
+if (WITH_ROS2)
+    add_executable(laser_localization_ros2 src/main_ros2.cpp)
+    target_link_libraries(laser_localization_ros2 PUBLIC LOCALIZATION CT_ICP TCLAP Ceres::ceres glog::glog Eigen3::Eigen OpenMP::OpenMP_CXX)
+    install(TARGETS laser_localization_ros2 DESTINATION ${CT_ICP_RUNTIME_DESTINATION})
+endif ()
+
 
 #cmake_minimum_required(VERSION 3.5)
 #project(laser_localization)

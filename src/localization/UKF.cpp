@@ -1,22 +1,16 @@
-#include "localization/UKF.h"
-#include  <algorithm>
-#include <utility>
+#include "UKF.h"
 
 namespace laser_localization
 {
-//    filter::filter(rclcpp::Node *node):
-//    node_(node)
-    filter::filter(ros::NodeHandle& nh):
-            nh_(nh)
+    filter::filter(float k)
     {
-//        nh_.getParam("filter/k1", k1_);
-        nh_.getParam("filter/k1", k1_);
+        k1_ = k;
         pos_.x() = 0;
         pos_.y() = 0;
         pos_.z() = 0;
     }
 
-    Eigen::Vector3f filter::predict(const Eigen::Matrix4f& update)
+    Eigen::Matrix4f filter::predict(const Eigen::Matrix4f& update)
     {
         Eigen::Matrix4f p = Eigen::Matrix4f::Identity();
         p.block<3,1>(0,3) = pos_;
@@ -25,10 +19,10 @@ namespace laser_localization
         pos_ = p.block<3,1>(0,3);
         angular_ = Eigen::Quaternionf(p.block<3,3>(0,0));
         distance += update.block<2, 1>(0, 3).norm();
-        //std::cout<<"upd: "<<update<<std::endl;
+        return p;
     }
 
-    Eigen::Vector3f filter::update(const Eigen::Vector3f& p, const Eigen::Quaternionf& a)
+    Eigen::Matrix4f filter::update(const Eigen::Vector3f& p, const Eigen::Quaternionf& a)
     {
         float k =  k1_;//1- std::min(0.2, std::max(0.001, (distance - 0.1) / 0.8));
         //std::cout<<"dis: "<<distance<<" k: "<<k<<std::endl;
@@ -36,6 +30,7 @@ namespace laser_localization
         pos_ = pos_*k + p * (1 - k);
         angular_ = angular_.coeffs() * k  + a.coeffs() * (1 - k);
         angular_ = angular_.normalized();
+        return get_pos();
     }
 
     void filter::set_pos(const Eigen::Vector3f& p, const Eigen::Quaternionf& a)
