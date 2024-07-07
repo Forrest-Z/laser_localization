@@ -5,9 +5,9 @@ namespace laser_localization
     filter::filter(float k)
     {
         k1_ = k;
-        pos_.x() = 0;
-        pos_.y() = 0;
-        pos_.z() = 0;
+
+        pos_ = Eigen::Vector3f::Zero();
+        angular_ = Eigen::Quaternionf::Identity();
     }
 
     Eigen::Matrix4f filter::predict(const Eigen::Matrix4f& update)

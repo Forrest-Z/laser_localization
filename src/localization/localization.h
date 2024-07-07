@@ -44,29 +44,36 @@ namespace laser_localization
     {
     public:
         explicit localization(const localization_options& options);
-        void predict(const Eigen::Matrix4f& update);
-        bool correct(std::shared_ptr<VoxelHashMap> local_map);
+        void predict(const Eigen::Matrix4f& odom);
+        bool correct(const VoxelHashMap& local_map);
 
-        void set_inv_odom_base(Eigen::Matrix4f p){inv_odom_base_ = p;}
-        Eigen::Matrix4f get_estimate_pos(){return estimate_.get_pos();}
         const std::vector<Point3D>& global_map(){return map_;}
+        const std::vector<std::vector<Point3D>>& global_map_frames(){return map_frames_;}
+        const std::vector<Point3D>& global_map_frame(){return map_frame_;}
+        bool is_ready_correct(){if (ready_correct_) {ready_correct_ = false; return true;} else return false;}
+
+        Eigen::Matrix4d get_estimate() {return estimate_.get_pos().cast<double>();}
     private:
         // option
         localization_options options_;
 
         // filter
         filter estimate_;
+        bool ready_correct_ = false;
 
+        Eigen::Matrix4f odom_base_;
 
-        Eigen::Matrix4f inv_odom_base_;
         std::shared_ptr<VoxelHashMap> local_map_;
 
         // map
         std::vector<Point3D> map_;
+        std::vector<Point3D> map_frame_;
         std::vector<std::vector<Point3D>> map_frames_;
         ArrayPoses map_frames_pose_;
         void load_map(std::string path);
         void convert_map();
+        void update_map_frame(const Eigen::Matrix4f& pose);
+        void check_ready_correct();
     };
 }// laser_localization
 

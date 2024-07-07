@@ -9,7 +9,7 @@
 #include <tf/transform_broadcaster.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/point_cloud2_iterator.h>
-#include <nav_msgs/Odometry.h>
+#include <visualization_msgs/Marker.h>
 #include <Eigen/Geometry>
 #include <Eigen/Core>
 
@@ -35,7 +35,9 @@ private:
     ros::Timer timer_;
     ros::Publisher frame_pub_;
     ros::Publisher map_pub_;
+    ros::Publisher map_frames_pub_;
     ros::Publisher local_map_pub_;
+    ros::Publisher trajectory_pub_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_pub_;
 
     ros::Subscriber laser_sub_;
@@ -55,15 +57,18 @@ private:
     void odom_thread();
     void laser_callback(const sensor_msgs::PointCloud2::ConstPtr& msg);
     void publish_points(const ros::Publisher& pub, std::string frame_id, const std::vector<Point3D> &points);
+    void publish_multi_points(const ros::Publisher& pub, std::string frame_id, const std::vector<std::vector<Point3D>> &points);
     void publish_odom(Eigen::Matrix3d R, Eigen::Vector3d t);
+    void publish_corrected_pos(Eigen::Matrix3d R, Eigen::Vector3d t);
     void publish_voxel_map(const ros::Publisher& pub, std::string frame_id, const VoxelHashMap& map);
+    void publish_trajectory(const ros::Publisher& pub, const std::vector<TrajectoryFrame>& trajectory);
 };
 
 localization::localization(ros::NodeHandle &nh)
         :nh_(nh)
 {
 
-    nh_.param<std::string>("localization/global_map_path", l_options.global_map_path,"/home/vio/Code/RobotSystem/human/src/localization/laser_localization/map/kitti.ply");
+    nh_.param<std::string>("localization/global_map_path", l_options.global_map_path,"/home/vio/Code/RobotSystem/human/src/localization/laser_localization/map/kitti00.ply");
     nh_.param<double>("localization/filter_k", l_options.filter_k, 0.1);
     nh_.param<int>("localization/frame_gap", l_options.frame_gap, 30);
     nh_.param<int>("localization/frame_size", l_options.frame_size, 50);
@@ -120,9 +125,11 @@ localization::localization(ros::NodeHandle &nh)
 
     // publisher
     map_pub_ = nh.advertise<sensor_msgs::PointCloud2>("/map", 10);
+    map_frames_pub_ = nh.advertise<sensor_msgs::PointCloud2>("/map_frames", 10);
     local_map_pub_ = nh.advertise<sensor_msgs::PointCloud2>("/local_map", 10);
     frame_pub_ = nh.advertise<sensor_msgs::PointCloud2>("/frame", 10);
     tf_pub_ = std::make_shared<tf2_ros::TransformBroadcaster>();
+    trajectory_pub_ = nh.advertise<visualization_msgs::Marker>("/trajectory", 10);
 
     // visual timer
     timer_ = nh.createTimer(ros::Duration(0.1), boost::bind(&localization::timer_callback, this));
@@ -160,12 +167,20 @@ void localization::timer_callback() {
 
     if (delay_cnt == 0) {// 1. publish global map 1hz
         publish_points(map_pub_, "map", localization_->global_map());
-    } else if (delay_cnt == 5) {// 2. publish local map 1hz
-        publish_voxel_map(local_map_pub_, "odom", odometry_->GetVoxelMap());
+    } else if (delay_cnt == 3) {// 2. publish local map 1hz
+//        publish_voxel_map(local_map_pub_, "odom", odometry_->GetVoxelMap());
+        publish_points(local_map_pub_, "map", localization_->global_map_frame());
+    } else if (delay_cnt == 6) {// 3. publish sub global maps 1hz
+        publish_multi_points(map_frames_pub_, "map", localization_->global_map_frames());
     }
-    // 2. publish tf
+    // 4. publish tf
     if (!odometry_result_.all_corrected_points.empty()) {
         publish_odom(odometry_result_.frame.begin_R, odometry_result_.frame.begin_t);
+
+        Eigen::Matrix4d Tmb = localization_->get_estimate();
+        publish_corrected_pos(Tmb.block<3, 3>(0, 0), Tmb.block<3, 1>(0, 3));
+
+        publish_trajectory(trajectory_pub_, odometry_->Trajectory());
     }
 }
 
@@ -247,6 +262,25 @@ void localization::publish_odom(Eigen::Matrix3d R, Eigen::Vector3d t) {
     tf_pub_->sendTransform(TransformStamped);
 }
 
+void localization::publish_corrected_pos(Eigen::Matrix3d R, Eigen::Vector3d t) {
+    geometry_msgs::TransformStamped TransformStamped;
+    TransformStamped.header.stamp = ros::Time::now();
+    TransformStamped.header.frame_id = "map";
+    TransformStamped.child_frame_id = "odom";
+
+    Eigen::Quaterniond q(R);
+    TransformStamped.transform.translation.x = t.x();
+    TransformStamped.transform.translation.y = t.y();
+    TransformStamped.transform.translation.z = t.z();
+    TransformStamped.transform.rotation.x = q.x();
+    TransformStamped.transform.rotation.y = q.y();
+    TransformStamped.transform.rotation.z = q.z();
+    TransformStamped.transform.rotation.w = q.w();
+
+    // Send the transformation
+    tf_pub_->sendTransform(TransformStamped);
+}
+
 void localization::publish_voxel_map(const ros::Publisher& pub, std::string frame_id, const VoxelHashMap& voxel_map) {
     sensor_msgs::PointCloud2 map;
     map.header.stamp = ros::Time::now();
@@ -285,11 +319,110 @@ void localization::publish_voxel_map(const ros::Publisher& pub, std::string fram
     pub.publish(map);
 }
 
+void localization::publish_multi_points(const ros::Publisher& pub, std::string frame_id,
+                                        const std::vector<std::vector<Point3D>> &vec_points) {
+    int point_size = 0;
+    for (const auto& points:vec_points){
+        point_size += points.size();
+    }
+    sensor_msgs::PointCloud2 map;
+    map.header.stamp = ros::Time::now();
+    map.header.frame_id = frame_id;
+    map.height = 1;
+    map.width = point_size;
+    map.is_bigendian = false;
+    map.is_dense = false;
+
+    // 设置 PointCloud2 消息的字段
+    sensor_msgs::PointCloud2Modifier modifier(map);
+    modifier.setPointCloud2FieldsByString(2, "xyz", "rgb");
+
+    // 设置 PointCloud2 数据的大小
+    map.data.resize(point_size * sizeof(float) * 6);
+    map.point_step = sizeof(float) * 6;
+    map.row_step = map.point_step * map.width;
+
+    // 填充 PointCloud2 数据
+    sensor_msgs::PointCloud2Iterator<float> iter_x(map, "x");
+    sensor_msgs::PointCloud2Iterator<float> iter_y(map, "y");
+    sensor_msgs::PointCloud2Iterator<float> iter_z(map, "z");
+
+    sensor_msgs::PointCloud2Iterator<float> iter_r(map, "r");
+    sensor_msgs::PointCloud2Iterator<float> iter_g(map, "g");
+    sensor_msgs::PointCloud2Iterator<float> iter_b(map, "b");
+
+    int cnt = 0;
+    float colors[6][3] = {{1, 0, 0},
+                          {1, 1, 0},
+                          {1, 1, 1},
+                          {0, 1, 1},
+                          {0, 0, 1},
+                          {0, 0, 0}};
+    for (const auto& points:vec_points) {
+        for (const auto&mp:points) {
+            *iter_x = static_cast<float>(mp.raw_pt.x());
+            *iter_y = static_cast<float>(mp.raw_pt.y());
+            *iter_z = static_cast<float>(mp.raw_pt.z());
+
+            int i = cnt % 6;
+            *iter_r = colors[i][0];
+            *iter_g = colors[i][1];
+            *iter_b = colors[i][2];
+
+            ++iter_x;
+            ++iter_y;
+            ++iter_z;
+
+            ++iter_r;
+            ++iter_g;
+            ++iter_b;
+        }
+        cnt ++;
+    }
+    pub.publish(map);
+}
+
+void localization::publish_trajectory(const ros::Publisher& pub, const std::vector<TrajectoryFrame>& trajectory) {
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "odom";
+    marker.header.stamp = ros::Time::now();
+    marker.ns = "trajectory";
+    marker.id = 0;
+    marker.type = visualization_msgs::Marker::LINE_STRIP;
+    marker.action = visualization_msgs::Marker::ADD;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 1.0;
+    marker.color.r = 1.0;
+    marker.color.a = 1.0;
+    auto trajectory_copy = trajectory;
+    marker.points.reserve(trajectory_copy.size());
+    for (const auto& frame:trajectory_copy) {
+        geometry_msgs::Point p;
+        p.x = frame.begin_t.x();
+        p.y = frame.begin_t.y();
+        p.z = frame.begin_t.z();
+        marker.points.push_back(p);
+    }
+    pub.publish(marker);
+}
+
 void localization::odom_thread() {
     while (ros::ok()) {
         if (!laser_buffer_.empty()) {
             std::vector<Point3D>& frame = laser_buffer_.front();
             odometry_result_ = odometry_->RegisterFrame(frame);
+            const auto& trajectory = odometry_->Trajectory();
+            Eigen::Matrix4f update = Eigen::Matrix4f::Identity();
+            if (trajectory.size() >= 2) {
+                update.block<3, 3>(0, 0) = (trajectory.at(trajectory.size() - 2).begin_R).cast<float>().transpose() *
+                                           (trajectory.at(trajectory.size() - 1).begin_R).cast<float>();
+            }
+
+            localization_->predict(update);
+            if (localization_->is_ready_correct()) {
+                localization_->correct(odometry_->GetVoxelMap());
+            }
+
             std::cout<<" odom: "<<odometry_result_.frame.begin_t<<std::endl;
             laser_buffer_lock_.try_lock();
             laser_buffer_.pop();

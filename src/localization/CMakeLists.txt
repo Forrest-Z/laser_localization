@@ -1,6 +1,7 @@
 
 include_directories(
         ../utilities
+        ../laser_odometry
 )
 add_library(LOCALIZATION STATIC localization.cpp UKF.cpp)
 
