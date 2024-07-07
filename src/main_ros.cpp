@@ -168,10 +168,10 @@ void localization::timer_callback() {
     if (delay_cnt == 0) {// 1. publish global map 1hz
         publish_points(map_pub_, "map", localization_->global_map());
     } else if (delay_cnt == 3) {// 2. publish local map 1hz
-//        publish_voxel_map(local_map_pub_, "odom", odometry_->GetVoxelMap());
-        publish_points(local_map_pub_, "map", localization_->global_map_frame());
+        publish_voxel_map(local_map_pub_, "odom", odometry_->GetVoxelMap());
     } else if (delay_cnt == 6) {// 3. publish sub global maps 1hz
-        publish_multi_points(map_frames_pub_, "map", localization_->global_map_frames());
+        publish_points(map_frames_pub_, "map", localization_->global_map_frame());
+//        publish_multi_points(map_frames_pub_, "map", localization_->global_map_frames());
     }
     // 4. publish tf
     if (!odometry_result_.all_corrected_points.empty()) {
@@ -413,11 +413,8 @@ void localization::odom_thread() {
             odometry_result_ = odometry_->RegisterFrame(frame);
             const auto& trajectory = odometry_->Trajectory();
             Eigen::Matrix4f update = Eigen::Matrix4f::Identity();
-            if (trajectory.size() >= 2) {
-                update.block<3, 3>(0, 0) = (trajectory.at(trajectory.size() - 2).begin_R).cast<float>().transpose() *
-                                           (trajectory.at(trajectory.size() - 1).begin_R).cast<float>();
-            }
-
+            update.block<3, 3>(0, 0) = odometry_result_.frame.begin_R.cast<float>();
+            update.block<3, 1>(0, 3) = odometry_result_.frame.begin_t.cast<float>();
             localization_->predict(update);
             if (localization_->is_ready_correct()) {
                 localization_->correct(odometry_->GetVoxelMap());

@@ -21,7 +21,6 @@ namespace laser_localization
         // 1. filter predict
 //        estimate_.predict(update);
         odom_base_ = odom;
-
         // 2. update map frame
         static Eigen::Matrix4f last_map_frame = Eigen::Matrix4f::Identity();
         if ((odom_base_.block<2, 1>(0, 3) - last_map_frame.block<2, 1>(0, 3)).norm() > 20){
@@ -70,7 +69,7 @@ namespace laser_localization
     void localization::update_map_frame(const Eigen::Matrix4f& pose){
         // update map frame
         map_frame_.clear();
-        int distance = 100;
+        int distance = 50;
         for (const auto& pt:map_){
             if (std::abs(pt.raw_pt[0] - pose(0, 3)) < distance &&
                 std::abs(pt.raw_pt[1] - pose(1, 3)) < distance){
