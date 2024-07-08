@@ -3,8 +3,11 @@
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
+#include <queue>
+#include <mutex>
 #include "UKF.h"
 #include "types.h"
+#include "ct_icp/ct_icp.h"
 
 namespace laser_localization
 {
@@ -15,6 +18,10 @@ namespace laser_localization
         double filter_k;
         int frame_gap;
         int frame_size;
+        int num_threads;                    // Number of threads to be used
+        double downsampling_resolution;     // Downsampling resolution
+        double max_correspondence_distance;  // Maximum correspondence distance between points (e.g., triming threshold)
+
         // 默认构造函数
         localization_options() = default;
 
@@ -27,7 +34,10 @@ namespace laser_localization
                 : global_map_path(other.global_map_path),
                   filter_k(other.filter_k),
                   frame_gap(other.frame_gap),
-                  frame_size(other.frame_size) {}
+                  frame_size(other.frame_size),
+                  num_threads(other.num_threads),
+                  downsampling_resolution(other.downsampling_resolution),
+                  max_correspondence_distance(other.max_correspondence_distance) {}
         // 赋值运算符
         localization_options& operator=(const localization_options& other) {
             if (this != &other) {
@@ -35,6 +45,9 @@ namespace laser_localization
                 filter_k = other.filter_k;
                 frame_gap = other.frame_gap;
                 frame_size = other.frame_size;
+                num_threads = other.num_threads;
+                downsampling_resolution = other.downsampling_resolution;
+                max_correspondence_distance = other.max_correspondence_distance;
             }
             return *this;
         }
@@ -45,13 +58,11 @@ namespace laser_localization
     public:
         explicit localization(const localization_options& options);
         void predict(const Eigen::Matrix4f& odom);
-        bool correct(const VoxelHashMap& local_map);
+        bool correct(std::vector<Eigen::Vector3d>& array_map);
 
-        const std::vector<Point3D>& global_map(){return map_;}
-        const std::vector<std::vector<Point3D>>& global_map_frames(){return map_frames_;}
-        const std::vector<Point3D>& global_map_frame(){return map_frame_;}
+        const std::vector<Eigen::Vector3d>& global_map(){return map_;}
+        const std::vector<Eigen::Vector3d>& global_map_frame(){return map_frame_;}
         bool is_ready_correct(){if (ready_correct_) {ready_correct_ = false; return true;} else return false;}
-
         Eigen::Matrix4d get_estimate() {return estimate_.get_pos().cast<double>();}
     private:
         // option
@@ -60,20 +71,16 @@ namespace laser_localization
         // filter
         filter estimate_;
         bool ready_correct_ = false;
-
         Eigen::Matrix4f odom_base_;
 
-        std::shared_ptr<VoxelHashMap> local_map_;
-
         // map
-        std::vector<Point3D> map_;
-        std::vector<Point3D> map_frame_;
-        std::vector<std::vector<Point3D>> map_frames_;
-        ArrayPoses map_frames_pose_;
+        std::vector<Eigen::Vector3d> map_;
+        std::vector<Eigen::Vector3d> map_frame_;
+
         void load_map(std::string path);
-        void convert_map();
         void update_map_frame(const Eigen::Matrix4f& pose);
         void check_ready_correct();
+        void sub_sample(std::vector<Eigen::Vector3d> &frame, double size_voxel);
     };
 }// laser_localization
 

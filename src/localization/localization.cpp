@@ -3,7 +3,8 @@
 #include <iostream>
 #include <utility>
 #include "plyFile.h"
-#include "ct_icp/ct_icp.h"
+#include "small_gicp/registration/registration_helper.hpp"
+#include "ct_odometry.h"
 #include <chrono>
 
 namespace laser_localization
@@ -13,7 +14,7 @@ namespace laser_localization
     {
         // load map
         load_map(options_.global_map_path);
-        sub_sample_frame(map_, 0.5);
+        sub_sample(map_, 0.5);
         update_map_frame(estimate_.get_pos());
     }
 
@@ -33,11 +34,27 @@ namespace laser_localization
         check_ready_correct();
     }
 
-    bool localization::correct(const VoxelHashMap& voxel_map) {
+    bool localization::correct(std::vector<Eigen::Vector3d>& array_map) {
 
-//        ICPSummary icp_summary;
-//        icp_summary = CT_ICP_GN(options, voxel_map, keypoints, trajectory_, index_frame);
+        small_gicp::RegistrationSetting setting;
+        setting.num_threads = options_.num_threads;
+        setting.downsampling_resolution = options_.downsampling_resolution;
+        setting.max_correspondence_distance = options_.max_correspondence_distance;
+
+        Eigen::Matrix4d T = estimate_.get_pos().cast<double>();  // Initial guess of the transformation
+        Eigen::Isometry3d init_T_target_source(T);
+
+        small_gicp::RegistrationResult result = align(map_frame_, array_map, init_T_target_source, setting);
+
+        Eigen::Matrix4d result_T = result.T_target_source.matrix();
+        if (result.converged) {
+            Eigen::Quaternionf q(result_T.block<3, 3>(0, 0).cast<float>());
+            Eigen::Vector3f t = result_T.block<3, 1>(0, 3).cast<float>();
+            estimate_.update(t, q);
+        }
+        return true;
     }
+
 
     void localization::load_map(std::string path) {
         //read ply frame file
@@ -53,14 +70,12 @@ namespace laser_localization
         for (int i(0); i < numPointsIn; i++) {
             unsigned long long int offset =
                     (unsigned long long int) i * (unsigned long long int) sizeOfPointsIn;
-            Point3D new_point;
-            new_point.raw_pt[1] = (*((float *) (dataIn + offset))) * 0.5;
+            Eigen::Vector3d new_point;
+            new_point[0] = (*((float *) (dataIn + offset)));
             offset += sizeof(float);
-            new_point.raw_pt[0] = (*((float *) (dataIn + offset))) * 0.5;
+            new_point[1] = (*((float *) (dataIn + offset)));
             offset += sizeof(float);
-            new_point.raw_pt[2] = (*((float *) (dataIn + offset))) * 0.5;
-            new_point.pt = new_point.raw_pt;
-            new_point.alpha_timestamp = 0;
+            new_point[2] = (*((float *) (dataIn + offset)));
             map_.push_back(new_point);
         }
         map_.shrink_to_fit();
@@ -71,8 +86,8 @@ namespace laser_localization
         map_frame_.clear();
         int distance = 50;
         for (const auto& pt:map_){
-            if (std::abs(pt.raw_pt[0] - pose(0, 3)) < distance &&
-                std::abs(pt.raw_pt[1] - pose(1, 3)) < distance){
+            if (std::abs(pt[0] - pose(0, 3)) < distance &&
+                std::abs(pt[1] - pose(1, 3)) < distance){
                 map_frame_.push_back(pt);
             }
         }
@@ -91,43 +106,25 @@ namespace laser_localization
         if (gap_time_ms > 1000 || distance > 5){
             last_correct_time = now;
             last_correct_pose = pos;
+            ready_correct_ = true;
         }
     }
 
-    void localization::convert_map() {
-
-        float max_x = 0, max_y = 0, min_x = 0, min_y = 0;
-        for (const auto& mp:map_) {
-            if (mp.raw_pt[0] > max_x) {max_x = mp.raw_pt[0];}
-            if (mp.raw_pt[0] < min_x) {min_x = mp.raw_pt[0];}
-            if (mp.raw_pt[1] > max_y) {max_y = mp.raw_pt[1];}
-            if (mp.raw_pt[1] < min_y) {min_y = mp.raw_pt[1];}
+    void localization::sub_sample(std::vector<Eigen::Vector3d> &frame, double size_voxel) {
+        std::unordered_map<Voxel, std::vector<Eigen::Vector3d>> grid;
+        for (int i = 0; i < (int) frame.size(); i++) {
+            auto kx = static_cast<short>(frame[i][0] / size_voxel);
+            auto ky = static_cast<short>(frame[i][1] / size_voxel);
+            auto kz = static_cast<short>(frame[i][2] / size_voxel);
+            grid[Voxel(kx, ky, kz)].push_back(frame[i]);
         }
-
-        float frame_gap = options_.frame_gap;
-        float half_frame_size = options_.frame_size / 2;
-
-        int size_x = int((max_x - min_x) / frame_gap);
-        int size_y = int((max_y - min_y) / frame_gap);
-
-        for (int i = 0;i < size_x;i ++) {
-            for (int j = 0;j < size_y; j++) {
-                Eigen::Matrix4d pose = Eigen::Matrix4d::Identity();
-                float x = min_x + half_frame_size + frame_gap * (float)i;
-                float y = min_y + half_frame_size + frame_gap * (float)j;
-                pose.block<3, 1>(0, 3) << x, y, 0;
-                map_frames_pose_.emplace_back(pose);
-            }
-        }
-        map_frames_.resize(map_frames_pose_.size());
-        for (const auto& mp:map_) {
-            for (int i = 0;i < map_frames_pose_.size();i ++) {
-                if (mp.raw_pt[0] > map_frames_pose_[i](0, 3) - half_frame_size &&
-                    mp.raw_pt[0] < map_frames_pose_[i](0, 3) + half_frame_size &&
-                    mp.raw_pt[1] > map_frames_pose_[i](1, 3) - half_frame_size &&
-                    mp.raw_pt[1] < map_frames_pose_[i](1, 3) + half_frame_size) {
-                    map_frames_[i].push_back(mp);
-                }
+        frame.resize(0);
+        int step = 0; //to take one random point inside each voxel (but with identical results when lunching the SLAM a second time)
+        for (const auto &n: grid) {
+            if (n.second.size() > 0) {
+                //frame.push_back(n.second[step % (int)n.second.size()]);
+                frame.push_back(n.second[0]);
+                step++;
             }
         }
     }

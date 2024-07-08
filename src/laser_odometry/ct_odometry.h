@@ -159,6 +159,7 @@ public:
 
     // Returns the Aggregated PointCloud of the Local Map
     [[nodiscard]] ArrayVector3d GetLocalMap() const;
+    [[nodiscard]] std::vector<Eigen::Vector3d> GetVecLocalMap() const;
     const VoxelHashMap& GetVoxelMap() {return voxel_map_;}
     // Num Points in the Map
     // Note: This requires a traversal of the whole map which is in O(n)

@@ -702,6 +702,16 @@ ArrayVector3d Odometry::GetLocalMap() const {
     return MapAsPointcloud(voxel_map_);
 }
 
+std::vector<Eigen::Vector3d> Odometry::GetVecLocalMap() const {
+    std::vector<Eigen::Vector3d> points;
+    points.reserve(::MapSize(voxel_map_));
+    for (auto &voxel: voxel_map_) {
+        for (int i(0); i < voxel.second.NumPoints(); ++i)
+            points.push_back(voxel.second.points[i]);
+    }
+    return points;
+}
+
 /* -------------------------------------------------------------------------------------------------------------- */
 Odometry::Odometry(
         const OdometryOptions &options) {

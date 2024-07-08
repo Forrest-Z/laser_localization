@@ -5,8 +5,8 @@ WITH_VIZ=$2
 
 if [ -z "$BUILD_TYPE" ]
 then
-	BUILD_TYPE="Release"
-#  BUILD_TYPE="Debug"
+#	BUILD_TYPE="Release"
+  BUILD_TYPE="Debug"
 fi
 
 if [ -z "$WITH_VIZ" ]
@@ -31,9 +31,9 @@ cmake -G "$GENERATOR" -S $EXT_SRC_DIR -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DWITH_VI
 echo "[CT_ICP] -- [EXTERNAL DEPENDENCIES] -- building CMake Project"
 cmake --build . --config $BUILD_TYPE
 
-echo "[CT_ICP] -- [MAIN PROJECT] -- Generating the cmake project"
-cd $BUILD_DIR
-cmake -G "$GENERATOR" -S $SRC_DIR -DCMAKE_BUILD_TYPE=${BUILD_TYPE}  -DWITH_VIZ3D=$WITH_VIZ
-
-echo "[CT_ICP] -- [MAIN PROJECT] -- Building the CMake Project"
-cmake --build . --config $BUILD_TYPE --target install --parallel 6
+#echo "[CT_ICP] -- [MAIN PROJECT] -- Generating the cmake project"
+#cd $BUILD_DIR
+#cmake -G "$GENERATOR" -S $SRC_DIR -DCMAKE_BUILD_TYPE=${BUILD_TYPE}  -DWITH_VIZ3D=$WITH_VIZ
+#
+#echo "[CT_ICP] -- [MAIN PROJECT] -- Building the CMake Project"
+#cmake --build . --config $BUILD_TYPE --target install --parallel 6

@@ -95,6 +95,23 @@ ExternalProject_Add(
         DEPENDS
         BUILD_COMMAND     ${CMAKE_COMMAND} --build <BINARY_DIR> --config ${CMAKE_BUILD_TYPE} --parallel 6)
 
+# Install small-gicp
+ExternalProject_Add(
+        small-gicp
+        PREFIX small-gicp
+
+        GIT_REPOSITORY https://github.com/koide3/small_gicp
+        GIT_TAG v0.1.2
+
+        BUILD_ALWAYS OFF
+        INSTALL_DIR ${EXT_INSTALL_DIR}/small-gicp
+        CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX=${EXT_INSTALL_DIR}/small-gicp
+        -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD}
+
+        DEPENDS
+        BUILD_COMMAND     ${CMAKE_COMMAND} --build <BINARY_DIR> --config ${CMAKE_BUILD_TYPE} --parallel 6)
+
 
 if (WITH_VIZ3D)
 

@@ -91,6 +91,15 @@ if (NOT TARGET Ceres::ceres)
 endif ()
 message(INFO "${LOG_PREFIX}Found Target Ceres::ceres")
 
+if (NOT small_gicp_DIR)
+    set(small_gicp_DIR ${EXT_INSTALL_ROOT}/small-gicp/lib/cmake/small_gicp)
+endif ()
+find_package(small_gicp REQUIRED CONFIG PATHS ${small_gicp_DIR} NO_DEFAULT_PATH)
+if (NOT TARGET small_gicp::small_gicp)
+    message(FATAL_ERROR "${LOG_PREFIX}Could not find target small_gicp::small_gicp")
+endif ()
+message(INFO "${LOG_PREFIX}Successfully Found Target small_gicp::small_gicp")
+
 
 # Tessil (As a hashmap)
 FetchContent_Declare(

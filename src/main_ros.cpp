@@ -42,21 +42,26 @@ private:
 
     ros::Subscriber laser_sub_;
 
-    std::shared_ptr<laser_localization::localization> localization_;
+    std::shared_ptr<laser_localization::localization> localization_ = nullptr;
     std::shared_ptr<Odometry> odometry_;
     Odometry::RegistrationSummary odometry_result_;
     std::shared_ptr<std::thread> odom_thread_;
+    std::shared_ptr<std::thread> localization_thread_;
 
     // data
     std::queue<std::vector<Point3D>> laser_buffer_;
+    std::queue<std::vector<Eigen::Vector3d>> local_maps_;
     std::mutex laser_buffer_lock_;
+    std::mutex map_buffer_lock_;
     laser_localization::localization_options l_options;
     OdometryOptions o_options;
 
     void timer_callback();
     void odom_thread();
+    void localization_thread();
     void laser_callback(const sensor_msgs::PointCloud2::ConstPtr& msg);
     void publish_points(const ros::Publisher& pub, std::string frame_id, const std::vector<Point3D> &points);
+    void publish_points(const ros::Publisher& pub, std::string frame_id, const std::vector<Eigen::Vector3d> &points);
     void publish_multi_points(const ros::Publisher& pub, std::string frame_id, const std::vector<std::vector<Point3D>> &points);
     void publish_odom(Eigen::Matrix3d R, Eigen::Vector3d t);
     void publish_corrected_pos(Eigen::Matrix3d R, Eigen::Vector3d t);
@@ -72,6 +77,9 @@ localization::localization(ros::NodeHandle &nh)
     nh_.param<double>("localization/filter_k", l_options.filter_k, 0.1);
     nh_.param<int>("localization/frame_gap", l_options.frame_gap, 30);
     nh_.param<int>("localization/frame_size", l_options.frame_size, 50);
+    nh_.param<int>("localization/num_threads", l_options.num_threads, 4);
+    nh_.param<double>("localization/downsampling_resolution", l_options.downsampling_resolution, 0.5);
+    nh_.param<double>("localization/max_correspondence_distance", l_options.max_correspondence_distance, 1.0);
 
     nh_.param<double>("odometry/voxel_size", o_options.voxel_size, 0.5);
     nh_.param<double>("odometry/sample_voxel_size", o_options.sample_voxel_size, 1.5);
@@ -98,18 +106,17 @@ localization::localization(ros::NodeHandle &nh)
     nh_.param<double>("ct_icp/max_dist_to_plane_ct_icp", o_options.ct_icp_options.max_dist_to_plane_ct_icp, 0.3);
     nh_.param<bool>("ct_icp/debug_print", o_options.ct_icp_options.debug_print, false);
     nh_.param<bool>("ct_icp/point_to_plane_with_distortion", o_options.ct_icp_options.point_to_plane_with_distortion, true);
-    int distance;
+    int distance, loss, solver;
     nh_.param<int>("ct_icp/distance", distance, CT_POINT_TO_PLANE);
     o_options.ct_icp_options.distance = static_cast<ICP_DISTANCE>(distance);
     nh_.param<int>("ct_icp/num_closest_neighbors", o_options.ct_icp_options.num_closest_neighbors, 1);
     nh_.param<double>("ct_icp/beta_location_consistency", o_options.ct_icp_options.beta_location_consistency, 0.001);
     nh_.param<double>("ct_icp/beta_constant_velocity", o_options.ct_icp_options.beta_constant_velocity, 0.001);
 
-    int solver, loss_function;
     nh_.param<int>("ct_icp/solver", solver, GN);
-    nh_.param<int>("ct_icp/loss_function", loss_function, HUBER);
+    nh_.param<int>("ct_icp/loss_function", loss, HUBER);
     o_options.ct_icp_options.solver = static_cast<CT_ICP_SOLVER>(solver);
-    o_options.ct_icp_options.loss_function = static_cast<LEAST_SQUARES>(loss_function);
+    o_options.ct_icp_options.loss_function = static_cast<LEAST_SQUARES>(loss);
 
     nh_.param<int>("ct_icp/ls_max_num_iters", o_options.ct_icp_options.ls_max_num_iters, 1);
     nh_.param<int>("ct_icp/ls_num_threads", o_options.ct_icp_options.ls_num_threads, 16);
@@ -131,11 +138,13 @@ localization::localization(ros::NodeHandle &nh)
     tf_pub_ = std::make_shared<tf2_ros::TransformBroadcaster>();
     trajectory_pub_ = nh.advertise<visualization_msgs::Marker>("/trajectory", 10);
 
-    // visual timer
-    timer_ = nh.createTimer(ros::Duration(0.1), boost::bind(&localization::timer_callback, this));
     // laser odom
     odom_thread_ = std::make_shared<std::thread>(&localization::odom_thread, this);
-
+    // localization thread
+    localization_thread_ = std::make_shared<std::thread>(&localization::localization_thread, this);
+    std::this_thread::sleep_for(1s);
+    // visual timer
+    timer_ = nh.createTimer(ros::Duration(0.1), boost::bind(&localization::timer_callback, this));
     // subscribe laser
     laser_sub_ = nh.subscribe(laser_topic, 10, &localization::laser_callback, this);
 }
@@ -164,7 +173,6 @@ void localization::timer_callback() {
     static int delay_cnt = 0;
     delay_cnt ++;
     if (delay_cnt > 10) {delay_cnt = 0;}
-
     if (delay_cnt == 0) {// 1. publish global map 1hz
         publish_points(map_pub_, "map", localization_->global_map());
     } else if (delay_cnt == 3) {// 2. publish local map 1hz
@@ -206,6 +214,41 @@ void localization::laser_callback(const sensor_msgs::PointCloud2::ConstPtr& msg)
     laser_buffer_lock_.try_lock();
     laser_buffer_.push(frame);
     laser_buffer_lock_.unlock();
+}
+
+void localization::publish_points(const ros::Publisher& pub, std::string frame_id, const std::vector<Eigen::Vector3d> &points){
+    sensor_msgs::PointCloud2 map;
+    map.header.stamp = ros::Time::now();
+    map.header.frame_id = frame_id;
+    map.height = 1;
+    map.width = points.size();
+    map.is_bigendian = false;
+    map.is_dense = false;
+
+    // 设置 PointCloud2 消息的字段
+    sensor_msgs::PointCloud2Modifier modifier(map);
+    modifier.setPointCloud2FieldsByString(1, "xyz");
+
+    // 设置 PointCloud2 数据的大小
+    map.data.resize(points.size() * sizeof(float) * 3);
+    map.point_step = sizeof(float) * 3;
+    map.row_step = map.point_step * map.width;
+
+    // 填充 PointCloud2 数据
+    sensor_msgs::PointCloud2Iterator<float> iter_x(map, "x");
+    sensor_msgs::PointCloud2Iterator<float> iter_y(map, "y");
+    sensor_msgs::PointCloud2Iterator<float> iter_z(map, "z");
+
+    for (const auto&mp:points) {
+        *iter_x = static_cast<float>(mp.x());
+        *iter_y = static_cast<float>(mp.y());
+        *iter_z = static_cast<float>(mp.z());
+
+        ++iter_x;
+        ++iter_y;
+        ++iter_z;
+    }
+    pub.publish(map);
 }
 
 void localization::publish_points(const ros::Publisher& pub, std::string frame_id, const std::vector<Point3D> &points) {
@@ -392,7 +435,7 @@ void localization::publish_trajectory(const ros::Publisher& pub, const std::vect
     marker.action = visualization_msgs::Marker::ADD;
     marker.pose.orientation.w = 1.0;
     marker.scale.x = 1.0;
-    marker.color.r = 1.0;
+    marker.color.g = 1.0;
     marker.color.a = 1.0;
     auto trajectory_copy = trajectory;
     marker.points.reserve(trajectory_copy.size());
@@ -417,16 +460,31 @@ void localization::odom_thread() {
             update.block<3, 1>(0, 3) = odometry_result_.frame.begin_t.cast<float>();
             localization_->predict(update);
             if (localization_->is_ready_correct()) {
-                localization_->correct(odometry_->GetVoxelMap());
+                std::vector<Eigen::Vector3d> map = odometry_->GetVecLocalMap();
+                map_buffer_lock_.try_lock();
+                local_maps_.push(map);
+                map_buffer_lock_.unlock();
             }
 
-            std::cout<<" odom: "<<odometry_result_.frame.begin_t<<std::endl;
             laser_buffer_lock_.try_lock();
             laser_buffer_.pop();
             laser_buffer_lock_.unlock();
         } else {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+    }
+}
+
+void localization::localization_thread() {
+    while (ros::ok()) {
+        if (localization_ != nullptr && !local_maps_.empty()) {
+            map_buffer_lock_.try_lock();
+            std::vector<Eigen::Vector3d> local_map = local_maps_.front();
+            localization_->correct(local_map);
+            local_maps_.pop();
+            map_buffer_lock_.unlock();
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 }
 
