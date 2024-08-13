@@ -3,10 +3,17 @@
 BUILD_TYPE=$1
 WITH_VIZ=$2
 
+TYPE_DIR=$BUILD_TYPE
 if [ -z "$BUILD_TYPE" ]
 then
-#	BUILD_TYPE="Release"
-  BUILD_TYPE="Debug"
+	BUILD_TYPE="Release"
+#  BUILD_TYPE="Debug"
+fi
+
+if [ "$BUILD_TYPE" = "Release" ]; then
+  TYPE_DIR="release"
+elif [ "$BUILD_TYPE" = "Debug" ]; then
+  TYPE_DIR="debug"
 fi
 
 if [ -z "$WITH_VIZ" ]
@@ -18,7 +25,7 @@ fi
 GENERATOR="Unix Makefiles"
 SRC_DIR=$(pwd)
 EXT_SRC_DIR="${SRC_DIR}/external"
-BUILD_DIR="${SRC_DIR}/cmake-build-${BUILD_TYPE}"
+BUILD_DIR="${SRC_DIR}/cmake-build-${TYPE_DIR}"
 EXT_BUILD_DIR=$BUILD_DIR/external
 
 mkdir $BUILD_DIR

@@ -41,6 +41,7 @@ private:
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_pub_;
 
     ros::Subscriber laser_sub_;
+    ros::Subscriber local_map_sub_;
 
     std::shared_ptr<laser_localization::localization> localization_ = nullptr;
     std::shared_ptr<Odometry> odometry_;
@@ -55,11 +56,16 @@ private:
     std::mutex map_buffer_lock_;
     laser_localization::localization_options l_options;
     OdometryOptions o_options;
+    struct Options{
+        bool use_external_odom = false;
+    };
+    Options g_options;
 
     void timer_callback();
     void odom_thread();
     void localization_thread();
     void laser_callback(const sensor_msgs::PointCloud2::ConstPtr& msg);
+    void local_map_callback(const sensor_msgs::PointCloud2::ConstPtr& msg);
     void publish_points(const ros::Publisher& pub, std::string frame_id, const std::vector<Point3D> &points);
     void publish_points(const ros::Publisher& pub, std::string frame_id, const std::vector<Eigen::Vector3d> &points);
     void publish_multi_points(const ros::Publisher& pub, std::string frame_id, const std::vector<std::vector<Point3D>> &points);
@@ -72,6 +78,8 @@ private:
 localization::localization(ros::NodeHandle &nh)
         :nh_(nh)
 {
+    // global options
+    nh_.param<bool>("use_external_odom", g_options.use_external_odom, false);
 
     nh_.param<std::string>("localization/global_map_path", l_options.global_map_path,"/home/vio/Code/RobotSystem/human/src/localization/laser_localization/map/kitti00.ply");
     nh_.param<double>("localization/filter_k", l_options.filter_k, 0.1);
@@ -124,8 +132,9 @@ localization::localization(ros::NodeHandle &nh)
     nh_.param<double>("ct_icp/ls_sigma", o_options.ct_icp_options.ls_sigma, 0.1);
     nh_.param<double>("ct_icp/ls_tolerant_min_threshold", o_options.ct_icp_options.ls_tolerant_min_threshold, 0.05);
 
-    std::string laser_topic;
+    std::string laser_topic, sub_map_topic;
     nh_.param<std::string>("laser_topic", laser_topic, "/velodyne_points");
+    nh_.param<std::string>("/Laser_map", sub_map_topic, "/local_map");
 
     localization_ = std::make_shared<laser_localization::localization>(l_options);
     odometry_ = std::make_shared<Odometry>(&o_options);
@@ -139,14 +148,20 @@ localization::localization(ros::NodeHandle &nh)
     trajectory_pub_ = nh.advertise<visualization_msgs::Marker>("/trajectory", 10);
 
     // laser odom
-    odom_thread_ = std::make_shared<std::thread>(&localization::odom_thread, this);
+    if (!g_options.use_external_odom) {
+        odom_thread_ = std::make_shared<std::thread>(&localization::odom_thread, this);
+    }
     // localization thread
     localization_thread_ = std::make_shared<std::thread>(&localization::localization_thread, this);
     std::this_thread::sleep_for(1s);
     // visual timer
     timer_ = nh.createTimer(ros::Duration(0.1), boost::bind(&localization::timer_callback, this));
     // subscribe laser
-    laser_sub_ = nh.subscribe(laser_topic, 10, &localization::laser_callback, this);
+    if (!g_options.use_external_odom) {
+        laser_sub_ = nh.subscribe(laser_topic, 10, &localization::laser_callback, this);
+    } else {
+        local_map_sub_ = nh.subscribe(sub_map_topic, 10, &localization::local_map_callback, this);
+    }
 }
 
 // 10Hz
@@ -176,19 +191,21 @@ void localization::timer_callback() {
     if (delay_cnt == 0) {// 1. publish global map 1hz
         publish_points(map_pub_, "map", localization_->global_map());
     } else if (delay_cnt == 3) {// 2. publish local map 1hz
-        publish_voxel_map(local_map_pub_, "odom", odometry_->GetVoxelMap());
+        if (!g_options.use_external_odom) {
+            publish_voxel_map(local_map_pub_, "odom", odometry_->GetVoxelMap());
+        }
     } else if (delay_cnt == 6) {// 3. publish sub global maps 1hz
         publish_points(map_frames_pub_, "map", localization_->global_map_frame());
 //        publish_multi_points(map_frames_pub_, "map", localization_->global_map_frames());
     }
     // 4. publish tf
     if (!odometry_result_.all_corrected_points.empty()) {
-        publish_odom(odometry_result_.frame.begin_R, odometry_result_.frame.begin_t);
-
+        if (!g_options.use_external_odom) {
+            publish_odom(odometry_result_.frame.begin_R, odometry_result_.frame.begin_t);
+            publish_trajectory(trajectory_pub_, odometry_->Trajectory());
+        }
         Eigen::Matrix4d Tmb = localization_->get_estimate();
         publish_corrected_pos(Tmb.block<3, 3>(0, 0), Tmb.block<3, 1>(0, 3));
-
-        publish_trajectory(trajectory_pub_, odometry_->Trajectory());
     }
 }
 
@@ -214,6 +231,25 @@ void localization::laser_callback(const sensor_msgs::PointCloud2::ConstPtr& msg)
     laser_buffer_lock_.try_lock();
     laser_buffer_.push(frame);
     laser_buffer_lock_.unlock();
+}
+
+void localization::local_map_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
+    std::vector<Eigen::Vector3d> local_map;
+    sensor_msgs::PointCloud2ConstIterator<float> iter_x(*msg, "x");
+    sensor_msgs::PointCloud2ConstIterator<float> iter_y(*msg, "y");
+    sensor_msgs::PointCloud2ConstIterator<float> iter_z(*msg, "z");
+
+    for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
+        Eigen::Vector3d point;
+        point[0] = *iter_x;
+        point[1] = *iter_y;
+        point[2] = *iter_z;
+        local_map.emplace_back(point);
+    }
+
+    map_buffer_lock_.try_lock();
+    local_maps_.push(local_map);
+    map_buffer_lock_.unlock();
 }
 
 void localization::publish_points(const ros::Publisher& pub, std::string frame_id, const std::vector<Eigen::Vector3d> &points){
